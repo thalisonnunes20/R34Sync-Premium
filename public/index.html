@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Downloader Premium - Booru</title>
+    <link rel="stylesheet" href="style.css?v=3">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-glow"></div>
+    
+    <div class="container">
+        <header>
+            <h1>Booru<span>Downloader</span></h1>
+            <p>Baixe conteúdos de forma automatizada e segura.</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <form id="downloadForm">
+                    <div class="input-group">
+                        <label for="searchType">Tipo de Busca</label>
+                        <select id="searchType" name="searchType" style="padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--bg-secondary); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 1rem;">
+                            <option value="user">Usuário / Criador</option>
+                            <option value="tag">Tags Comuns</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="tags">Termo da Busca</label>
+                        <input type="text" id="tags" name="tags" placeholder="ex: Lucy5566, tag1 tag2" required>
+                    </div>
+                    <button type="submit" id="submitBtn">
+                        <span class="btn-text">Iniciar Download</span>
+                        <div class="loader hidden" id="btnLoader"></div>
+                    </button>
+                </form>
+            </div>
+
+            <div id="progressContainer" class="card progress-card hidden">
+                <div class="status-header">
+                    <h3 id="statusTitle">Inicializando...</h3>
+                    <span id="percentage">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="statusMessage" class="status-message">Aguardando...</p>
+                
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total</span>
+                        <span class="stat-value" id="totalFiles">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Baixados</span>
+                        <span class="stat-value" id="downloadedFiles">0</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
