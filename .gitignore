@@ -1,3 +1,8 @@
 node_modules/
 downloads/
 .env
+config.json
+test-zip.js
+test.zip
+tracked_tags.json
+database.sqlite

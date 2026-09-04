@@ -3,27 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Downloader Premium - Booru</title>
+    <title>R34Sync - Auto Downloader</title>
     <link rel="stylesheet" href="style.css?v=3">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="background-glow"></div>
-    
-    <div class="container">
+
+    <!-- AUTH CONTAINER -->
+    <div id="authContainer" class="container">
         <header>
-            <h1>Booru<span>Downloader</span></h1>
-            <p>Baixe conteúdos de forma automatizada e segura.</p>
+            <h1>R34<span>Sync</span></h1>
+            <p>Gerenciador Premium</p>
+        </header>
+
+        <!-- SETUP CARD -->
+        <div id="setupCard" class="card hidden">
+            <h2 style="font-size: 1.25rem; margin-bottom: 1rem; color: var(--accent); text-align: center;">Configuração Inicial</h2>
+            <p style="text-align: center; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1.5rem;">Crie um usuário mestre para proteger o painel.</p>
+            <form id="setupForm">
+                <div class="input-group">
+                    <label>Usuário</label>
+                    <input type="text" id="setupUser" required>
+                </div>
+                <div class="input-group">
+                    <label>Senha</label>
+                    <input type="password" id="setupPass" required>
+                </div>
+                <button type="submit" id="setupBtn">Criar Administrador</button>
+                <p id="setupError" class="error-text hidden" style="text-align: center; margin-top: 1rem; font-size: 0.85rem;"></p>
+            </form>
+        </div>
+
+        <!-- LOGIN CARD -->
+        <div id="loginCard" class="card hidden">
+            <h2 style="font-size: 1.25rem; margin-bottom: 1rem; color: var(--accent); text-align: center;">Acesso Restrito</h2>
+            <form id="loginForm">
+                <div class="input-group">
+                    <label>Usuário</label>
+                    <input type="text" id="loginUser" required>
+                </div>
+                <div class="input-group">
+                    <label>Senha</label>
+                    <input type="password" id="loginPass" required>
+                </div>
+                <button type="submit" id="loginBtn">Entrar no Painel</button>
+                <p id="loginError" class="error-text hidden" style="text-align: center; margin-top: 1rem; font-size: 0.85rem;"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- PAINEL PRINCIPAL -->
+    <div id="appContainer" class="container hidden">
+        <header style="position: relative;">
+            <h1>R34<span>Sync</span></h1>
+            <p>Seu sistema inteligente de downloads.</p>
+            <button id="logoutBtn" class="icon-btn" style="position: absolute; right: 0; top: 0; background: rgba(239, 68, 68, 0.1); color: var(--error);" title="Sair">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+            </button>
         </header>
 
         <main>
-            <div class="card">
+            <div class="tabs" style="display: flex; gap: 10px; margin-bottom: 1.5rem; justify-content: center;">
+                <button class="tab-btn active" id="tabManual">Baixar Agora</button>
+                <button class="tab-btn" id="tabAuto">Agendamentos</button>
+                <button class="tab-btn" id="tabManager">Gerenciador</button>
+            </div>
+
+            <!-- ABA DE DOWNLOAD MANUAL -->
+            <div id="sectionManual">
+                <div class="card">
                 <form id="downloadForm">
                     <div class="input-group">
                         <label for="searchType">Tipo de Busca</label>
-                        <select id="searchType" name="searchType" style="padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--bg-secondary); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 1rem;">
-                            <option value="user">Usuário / Criador</option>
-                            <option value="tag">Tags Comuns</option>
+                        <select id="searchType" name="searchType" style="padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--bg-secondary); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 1rem; cursor: pointer;">
+                            <option value="user">Artista</option>
+                            <option value="tag">Tag</option>
                         </select>
                     </div>
                     
@@ -56,6 +113,67 @@
                     <div class="stat-item">
                         <span class="stat-label">Baixados</span>
                         <span class="stat-value" id="downloadedFiles">0</span>
+                    </div>
+                </div>
+                <button type="button" id="cancelBtn" style="margin-top: 1.5rem; background: var(--error); color: white; display: none;">Cancelar Download</button>
+            </div>
+            </div>
+
+            <!-- ABA DE MONITORAMENTO AUTOMÁTICO -->
+            <div id="sectionAuto" class="hidden">
+                <div class="card">
+                    <h2 style="margin-bottom: 0.5rem; font-size: 1.25rem;">Rastreamento Automático</h2>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.4;">
+                        O sistema irá buscar imagens novas das tags abaixo todos os dias às <span id="cronTimeDisplay" style="font-weight: bold; color: var(--accent);">03:00</span> da manhã, poupando espaço e internet ao ignorar imagens já baixadas.
+                    </p>
+                    
+                    <form id="trackForm" style="display: flex; gap: 10px; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                        <select id="trackSearchType" name="searchType" style="flex: 1; min-width: 130px; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--bg-secondary); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 1rem; cursor: pointer;">
+                            <option value="user">Artista</option>
+                            <option value="tag">Tag</option>
+                        </select>
+                        <input type="text" id="trackTags" name="tags" placeholder="Ex: Lucy5566" required style="flex: 2; min-width: 200px;">
+                        <button type="submit" id="trackBtn" style="flex: 1; min-width: 100px;">Adicionar</button>
+                    </form>
+
+                    <div id="trackedList" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 300px; overflow-y: auto; padding-right: 5px;">
+                        <p style="text-align: center; color: var(--text-secondary); font-size: 0.85rem;">Carregando...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA DE GERENCIAMENTO -->
+            <div id="sectionManager" class="hidden">
+                <div class="card" style="margin-bottom: 1.5rem; padding: 1.5rem;">
+                    <h2 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--accent);">Configurações</h2>
+                    <div class="input-group" style="margin-bottom: 1rem;">
+                        <label for="configDownloadDir">Local de Download (Deixe em branco para o padrão da pasta)</label>
+                        <input type="text" id="configDownloadDir" placeholder="Ex: C:\Users\Nome\Downloads" style="width: 100%;">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 0;">
+                        <label for="configCronTime">Horário de Verificação Automática</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="time" id="configCronTime" style="flex: 1;">
+                            <button type="button" id="saveConfigBtn" style="width: auto; padding: 0 1.5rem; font-size: 0.9rem;">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h2 style="font-size: 1.25rem;">Pastas Locais</h2>
+                        <button type="button" id="refreshFoldersBtn" class="icon-btn" title="Atualizar">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                        </button>
+                    </div>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.4;">
+                        Gerencie o que já foi baixado. Você pode transformar em arquivo ZIP ou apagar a pasta inteira para liberar espaço.
+                    </p>
+                    
+                    <div id="foldersList" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 400px; overflow-y: auto; padding-right: 5px;">
+                        <p style="text-align: center; color: var(--text-secondary); font-size: 0.85rem;">Carregando pastas...</p>
                     </div>
                 </div>
             </div>
