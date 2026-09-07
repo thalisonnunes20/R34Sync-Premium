@@ -1,0 +1,13 @@
+services:
+  r34sync:
+    image: ghcr.io/thalisonnunes20/r34sync-premium:main
+    container_name: r34sync_app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./downloads:/app/downloads
+      - ./database.sqlite:/app/database.sqlite
+      - ./config.json:/app/config.json
+    env_file:
+      - .env
+    restart: unless-stopped
