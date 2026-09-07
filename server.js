@@ -77,9 +77,9 @@ app.post('/api/auth/setup', (req, res) => {
     const { username, password } = req.body;
     db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
         if (row.count > 0) return res.status(403).json({ error: 'Setup já realizado' });
-        
+
         const hash = bcrypt.hashSync(password, 10);
-        db.run('INSERT INTO users (username, password) VALUES (?, ?)', [username, hash], function(err) {
+        db.run('INSERT INTO users (username, password) VALUES (?, ?)', [username, hash], function (err) {
             if (err) return res.status(500).json({ error: 'Erro ao criar usuário' });
             res.json({ success: true });
         });
@@ -90,7 +90,7 @@ app.post('/api/auth/login', (req, res) => {
     const { username, password } = req.body;
     db.get('SELECT * FROM users WHERE username = ?', [username], (err, row) => {
         if (err || !row) return res.status(401).json({ error: 'Usuário não encontrado' });
-        
+
         if (bcrypt.compareSync(password, row.password)) {
             const token = jwt.sign({ id: row.id, username: row.username }, JWT_SECRET, { expiresIn: '7d' });
             res.json({ success: true, token });
@@ -135,7 +135,7 @@ function saveTrackedTags(tagsArray) {
 // Rota para SSE (Server-Sent Events) para enviar progresso
 app.get('/api/progress/:taskId', (req, res) => {
     const taskId = req.params.taskId;
-    
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -213,9 +213,9 @@ app.post('/api/cancel/:taskId', (req, res) => {
 app.get('/api/folders', (req, res) => {
     const baseDir = getBaseDownloadDir();
     if (!fs.existsSync(baseDir)) return res.json([]);
-    
+
     const folders = fs.readdirSync(baseDir).filter(f => fs.statSync(path.join(baseDir, f)).isDirectory());
-    
+
     const result = folders.map(folder => {
         const folderPath = path.join(baseDir, folder);
         const files = fs.readdirSync(folderPath);
@@ -223,14 +223,14 @@ app.get('/api/folders', (req, res) => {
         files.forEach(file => {
             totalSize += fs.statSync(path.join(folderPath, file)).size;
         });
-        
+
         return {
             name: folder,
             fileCount: files.length,
             sizeMb: (totalSize / (1024 * 1024)).toFixed(2)
         };
     });
-    
+
     res.json(result);
 });
 
@@ -250,18 +250,18 @@ app.delete('/api/folders/:name', (req, res) => {
 app.get('/api/zip/:name', (req, res) => {
     const folderName = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '_');
     const folderPath = path.join(getBaseDownloadDir(), folderName);
-    
+
     if (!fs.existsSync(folderPath)) {
         return res.status(404).json({ error: 'Pasta não encontrada' });
     }
 
     res.attachment(`${folderName}.zip`);
     const archive = new ZipArchive({ zlib: { level: 5 } });
-    
+
     archive.on('error', (err) => {
         res.status(500).send({ error: err.message });
     });
-    
+
     archive.pipe(res);
     archive.directory(folderPath, false);
     archive.finalize();
@@ -300,23 +300,23 @@ app.get('/api/tracked', (req, res) => {
 app.post('/api/tracked', (req, res) => {
     const { tags, searchType } = req.body;
     if (!tags) return res.status(400).json({ error: 'Tags obrigatórias' });
-    
+
     let finalTags = tags.trim();
     if (searchType === 'user' && !finalTags.startsWith('user:')) {
         finalTags = 'user:' + finalTags;
     }
-    
+
     const tracked = getTrackedTags();
     if (tracked.some(t => t.tags === finalTags)) {
         return res.status(400).json({ error: 'Esta tag já está sendo rastreada' });
     }
-    
+
     const newEntry = {
         id: Date.now().toString(),
         tags: finalTags,
         addedAt: new Date().toISOString()
     };
-    
+
     tracked.push(newEntry);
     saveTrackedTags(tracked);
     res.json(newEntry);
@@ -352,18 +352,18 @@ async function processDownload(taskId, tags, downloadDir, userId, apiKey) {
         while (keepGoing) {
             if (taskId && activeDownloads[taskId]?.cancelled) break;
             let url = `${apiBase}&tags=${encodeURIComponent(tags)}&pid=${page}&limit=${limit}`;
-            
+
             // Usa as credenciais do front-end ou as do arquivo .env
             const activeUserId = userId || process.env.RULE34_USER_ID;
             const activeApiKey = apiKey || process.env.RULE34_API_KEY;
-            
+
             if (activeUserId && activeApiKey) {
                 url += `&user_id=${encodeURIComponent(activeUserId)}&api_key=${encodeURIComponent(activeApiKey)}`;
             }
-            const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }});
-            
+            const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+
             let data = response.data;
-            
+
             // --- DEBUG LOGS ---
             console.log('================= DEBUG API =================');
             console.log('URL Chamada:', url);
@@ -404,7 +404,7 @@ async function processDownload(taskId, tags, downloadDir, userId, apiKey) {
                 });
 
                 updateStatus({ message: `Encontrados ${allPosts.length} arquivos até o momento...` });
-                
+
                 if (data.length < limit) {
                     keepGoing = false; // Última página atingida
                 } else {
@@ -428,7 +428,7 @@ async function processDownload(taskId, tags, downloadDir, userId, apiKey) {
 
         for (const post of allPosts) {
             if (taskId && activeDownloads[taskId]?.cancelled) break;
-            
+
             if (!post.file_url) continue;
 
             const fileUrl = post.file_url;
@@ -471,7 +471,7 @@ async function processDownload(taskId, tags, downloadDir, userId, apiKey) {
         if (taskId && activeDownloads[taskId]?.cancelled) {
             updateStatus({ state: 'error', message: 'Download cancelado pelo usuário.' });
             if (activeDownloads[taskId].deleteOnCancel) {
-                try { fs.rmSync(downloadDir, { recursive: true, force: true }); } catch(e) {}
+                try { fs.rmSync(downloadDir, { recursive: true, force: true }); } catch (e) { }
             }
             return;
         }
@@ -499,30 +499,30 @@ function startCronTask() {
     activeCronTask = cron.schedule(cronSchedule, async () => {
         console.log('=============================================');
         console.log(`[Cron] Iniciando rotina automática às ${new Date().toLocaleString()}`);
-        
+
         const tracked = getTrackedTags();
         if (tracked.length === 0) {
             console.log('[Cron] Nenhuma tag para monitorar. Encerrando rotina.');
             return;
         }
-        
+
         for (const item of tracked) {
             console.log(`[Cron] Verificando e baixando: ${item.tags}`);
             const tagSafeName = item.tags.replace(/[^a-zA-Z0-9_-]/g, '_');
             const downloadDir = path.join(getBaseDownloadDir(), tagSafeName);
-            
+
             if (!fs.existsSync(downloadDir)) {
                 fs.mkdirSync(downloadDir, { recursive: true });
             }
-            
+
             // Passa taskId null para não emitir SSE e usa as credenciais padrão do .env
             await processDownload(null, item.tags, downloadDir, process.env.RULE34_USER_ID, process.env.RULE34_API_KEY);
         }
-        
+
         console.log('[Cron] Rotina automática finalizada!');
         console.log('=============================================');
     });
-    
+
     console.log(`[Cron] Tarefa agendada para rodar diariamente às ${cronHour || '03'}:${cronMinute || '00'}`);
 }
 

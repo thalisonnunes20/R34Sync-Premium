@@ -50,7 +50,7 @@ Você não precisa instalar Node.js, código-fonte ou qualquer dependência. Bas
    docker-compose up -d
    ```
 5. Pronto! Acesse `http://localhost:3000` no seu navegador.
-*(O Docker fará o download da imagem oficial e criará suas pastas de backup e banco de dados de forma totalmente automática).*
+*(O Docker baixará a imagem, e todos os seus downloads, configurações e banco de dados serão salvos automaticamente e organizados dentro de uma nova pasta chamada `r34_data` no seu computador).*
 
 ### 🪟 Instalação Nativa (Windows)
 1. Clone ou baixe este repositório.
