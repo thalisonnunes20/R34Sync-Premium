@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const dbPath = path.join(__dirname, 'database.sqlite');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const dbPath = path.join(DATA_DIR, 'database.sqlite');
 
 if (fs.existsSync(dbPath)) {
     fs.unlinkSync(dbPath);

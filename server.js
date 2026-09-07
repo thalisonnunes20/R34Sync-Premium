@@ -14,8 +14,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'r34sync-super-secret-key-2026';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DATA_DIR = process.env.DATA_DIR || __dirname;
 
-const CONFIG_FILE = path.join(__dirname, 'config.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
 function getAppConfig() {
     if (fs.existsSync(CONFIG_FILE)) {
@@ -34,13 +35,13 @@ function saveAppConfig(config) {
 
 function getBaseDownloadDir() {
     const config = getAppConfig();
-    return config.downloadDir || process.env.DOWNLOAD_DIR || path.join(__dirname, 'downloads');
+    return config.downloadDir || process.env.DOWNLOAD_DIR || path.join(DATA_DIR, 'downloads');
 }
 
 app.use(cors());
 app.use(express.json());
 
-const dbPath = path.join(__dirname, 'database.sqlite');
+const dbPath = path.join(DATA_DIR, 'database.sqlite');
 const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
