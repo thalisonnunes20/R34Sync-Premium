@@ -37,9 +37,22 @@ Ele conta com uma interface web (Dark/Green Mode) construída nos padrões visua
 
 ## 🚀 Instalação
 
-O projeto foi construído para ser fácil de instalar em qualquer ambiente. Nós preparamos scripts executáveis que cuidam de tudo para você, desde o `Node.js` até as bibliotecas (`npm`).
+O projeto pode ser executado de forma nativa ou através do Docker (método mais simples e rápido). Escolha a melhor opção para o seu ambiente:
 
-### 🪟 Windows
+### 🐳 Via Docker (Recomendado - Windows, Linux e Mac)
+Você não precisa instalar Node.js, código-fonte ou qualquer dependência. Basta ter o Docker instalado:
+
+1. Crie uma pasta vazia no seu computador (ex: `r34sync-bot`).
+2. Baixe o arquivo `docker-compose.example.yml` deste repositório e salve dentro dessa pasta com o nome `docker-compose.yml`.
+3. Baixe o arquivo `.env.example`, salve como `.env` e preencha com suas configurações.
+4. Abra o terminal dentro da pasta e execute o comando:
+   ```bash
+   docker-compose up -d
+   ```
+5. Pronto! Acesse `http://localhost:3000` no seu navegador.
+*(O Docker fará o download da imagem oficial e criará suas pastas de backup e banco de dados de forma totalmente automática).*
+
+### 🪟 Instalação Nativa (Windows)
 1. Clone ou baixe este repositório.
 2. Dê dois cliques no arquivo `install.bat`.
 3. O script irá instalar o Node.js silenciosamente e baixar as dependências.
@@ -69,29 +82,57 @@ O terminal informará que o servidor está rodando. Abra o seu navegador e acess
 
 Lembre-se: Pelo método acima, a janela preta do terminal precisa ficar aberta/minimizada. Para rodar o sistema em segundo plano sem janela, veja o tutorial abaixo.
 
-### 🤖 Como deixar o Robô sempre ligado (24/7)
+### 🤖 Como deixar o Robô sempre ligado (24/7) em Segundo Plano
 
-Se você não quer deixar o terminal aberto na barra de tarefas o tempo todo, você pode rodar o sistema em segundo plano (background) de forma invisível. A melhor ferramenta oficial para isso é o **PM2**.
+> **Nota:** Se você instalou o projeto usando o **Docker**, ele já roda em segundo plano nativamente. As instruções abaixo são apenas para quem escolheu a **Instalação Nativa**.
 
-#### Passo 1: Instalar o PM2 (Windows/Linux)
-Abra o seu terminal (CMD, PowerShell ou bash) e instale o gerenciador globalmente:
-```bash
-npm install -g pm2
-```
+Se você não quer deixar o terminal aberto na barra de tarefas o tempo todo, você pode rodar o sistema de forma invisível:
 
-#### Passo 2: Iniciar o Projeto em Segundo Plano
-Navegue até a pasta do seu projeto R34Sync e inicie o servidor informando um nome:
-```bash
-pm2 start server.js --name "r34sync"
-```
-*Pronto! O seu painel e os downloads agendados continuarão funcionando de forma silenciosa e autônoma, sem nenhuma janela te atrapalhando.*
+#### 🐧 Linux (Serviço Nativo Systemd)
+A melhor forma de rodar aplicações em segundo plano no Linux é utilizando o gerenciador nativo `systemd`.
+1. Crie o arquivo de serviço:
+   ```bash
+   sudo nano /etc/systemd/system/r34sync.service
+   ```
+2. Cole a configuração abaixo (não se esqueça de alterar o `User` e o `WorkingDirectory` com o caminho real do projeto na sua máquina):
+   ```ini
+   [Unit]
+   Description=R34Sync Premium Daemon
+   After=network.target
 
-#### Comandos Úteis do PM2
-- `pm2 status` - Mostra se o robô está online e quanto de memória está usando.
-- `pm2 logs r34sync` - Visualiza os textos que apareceriam na "janela preta".
-- `pm2 stop r34sync` - Desliga o robô.
-- `pm2 restart r34sync` - Reinicia o servidor (útil caso tenha modificado o código).
-- `pm2 startup` - Exibe o comando necessário para fazer o seu PC ligar o robô automaticamente sempre que for reiniciado.
+   [Service]
+   Type=simple
+   User=root
+   WorkingDirectory=/caminho/para/R34Sync-Premium
+   ExecStart=/usr/bin/node server.js
+   Restart=on-failure
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+3. Salve o arquivo (`Ctrl+O`, `Enter`, `Ctrl+X`) e ative o serviço:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable r34sync
+   sudo systemctl start r34sync
+   ```
+*(Agora o robô ligará automaticamente sempre que o servidor for reiniciado e operará de forma invisível).*
+
+#### 🪟 Windows (Inicialização Nativa Invisível)
+Embora seja possível transformar o Node.js em um Serviço nativo do Windows, isso exige instalação de aplicativos de terceiros (como o NSSM). A forma 100% nativa e mais simples de iniciar o robô junto com o computador, e sem nenhuma tela preta, é usando um pequeno script `.vbs`:
+
+1. No teclado, aperte `Windows + R`, digite `shell:startup` e dê `Enter`. (Isso abrirá a pasta de Inicialização oficial do Windows).
+2. Dentro dessa pasta, crie um novo arquivo e chame-o de `iniciar_r34sync.vbs` (certifique-se de apagar o `.txt` no final).
+3. Abra esse arquivo com o Bloco de Notas e cole o código abaixo (alterando o caminho para o local real do projeto no seu PC):
+   ```vbscript
+   Set WshShell = CreateObject("WScript.Shell") 
+   WshShell.Run chr(34) & "C:\caminho\para\R34Sync-Premium\start.bat" & Chr(34), 0
+   Set WshShell = Nothing
+   ```
+4. Salve e feche.
+*(Pronto! Sempre que você ligar o computador, o Windows chamará o seu `start.bat`, mas aquele "0" no final do código mandará esconder completamente a janela).*
+
+> **Dica:** Para desligar o robô futuramente, basta abrir o "Gerenciador de Tarefas" do Windows (Ctrl+Shift+Esc), ir na aba "Detalhes" ou "Processos", procurar por `node.exe` e Finalizar a Tarefa.
 ---
 
 ## 💻 Tecnologias e Tutorial
