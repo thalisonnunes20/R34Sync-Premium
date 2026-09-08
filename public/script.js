@@ -9,6 +9,51 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let token = localStorage.getItem('r34sync_token') || '';
 
+    // ==========================================
+    // MODAL CUSTOMIZADO (POP-UP)
+    // ==========================================
+    function showConfirmModal(title, message, confirmText, isDanger = false, cancelText = 'Cancelar') {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('customModal');
+            const titleEl = document.getElementById('modalTitle');
+            const messageEl = document.getElementById('modalMessage');
+            const btnCancel = document.getElementById('modalBtnCancel');
+            const btnConfirm = document.getElementById('modalBtnConfirm');
+
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            btnCancel.textContent = cancelText;
+            btnConfirm.textContent = confirmText;
+
+            if (isDanger) {
+                btnConfirm.classList.add('danger');
+            } else {
+                btnConfirm.classList.remove('danger');
+            }
+
+            modal.classList.remove('hidden');
+
+            const cleanup = () => {
+                btnCancel.removeEventListener('click', onCancel);
+                btnConfirm.removeEventListener('click', onConfirm);
+                modal.classList.add('hidden');
+            };
+
+            const onCancel = () => {
+                cleanup();
+                resolve(false);
+            };
+
+            const onConfirm = () => {
+                cleanup();
+                resolve(true);
+            };
+
+            btnCancel.addEventListener('click', onCancel);
+            btnConfirm.addEventListener('click', onConfirm);
+        });
+    }
+
     // Interceptador global do Fetch para injetar o JWT automaticamente
     const originalFetch = window.fetch;
     window.fetch = async function() {
@@ -139,9 +184,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const totalFilesEl = document.getElementById('totalFiles');
     const downloadedFilesEl = document.getElementById('downloadedFiles');
     const cancelBtn = document.getElementById('cancelBtn');
+    const closeProgressBtn = document.getElementById('closeProgressBtn');
 
     let eventSource = null;
     let currentTaskId = null;
+    let autoHideTimeout = null;
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -156,10 +203,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // UI Reset
+        if (autoHideTimeout) clearTimeout(autoHideTimeout);
         submitBtn.disabled = true;
         btnText.classList.add('hidden');
         btnLoader.classList.remove('hidden');
         progressContainer.classList.remove('hidden');
+        closeProgressBtn.style.display = 'none';
         
         statusTitle.textContent = 'Iniciando...';
         statusTitle.className = '';
@@ -188,11 +237,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Conecta ao SSE para receber atualizações
             currentTaskId = data.taskId;
             cancelBtn.style.display = 'block';
+            closeProgressBtn.style.display = 'none';
             connectSSE(data.taskId);
 
         } catch (error) {
             showError(error.message);
             resetBtn();
+            autoHideTimeout = setTimeout(() => {
+                progressContainer.classList.add('hidden');
+            }, 8000);
         }
     });
 
@@ -211,6 +264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 eventSource.close();
                 resetBtn();
                 cancelBtn.style.display = 'none';
+                closeProgressBtn.style.display = 'block';
                 currentTaskId = null;
                 if (data.state === 'completed') {
                     statusTitle.textContent = 'Concluído!';
@@ -221,6 +275,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (data.state === 'error') {
                     showError(data.message);
                 }
+                autoHideTimeout = setTimeout(() => {
+                    progressContainer.classList.add('hidden');
+                }, 8000);
             }
         };
 
@@ -229,7 +286,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             eventSource.close();
             resetBtn();
             cancelBtn.style.display = 'none';
+            closeProgressBtn.style.display = 'block';
             currentTaskId = null;
+            autoHideTimeout = setTimeout(() => {
+                progressContainer.classList.add('hidden');
+            }, 8000);
         };
     }
 
@@ -276,9 +337,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnLoader.classList.add('hidden');
     }
 
+    closeProgressBtn.addEventListener('click', () => {
+        progressContainer.classList.add('hidden');
+    });
+
     cancelBtn.addEventListener('click', async () => {
         if (!currentTaskId) return;
-        const deleteFolder = confirm('Deseja apagar as imagens que já foram baixadas desse criador/tag?');
+
+        const wantsToCancel = await showConfirmModal(
+            'Cancelar Download',
+            'Deseja realmente interromper o download atual?',
+            'Sim, Cancelar',
+            true,
+            'Voltar'
+        );
+        if (!wantsToCancel) return;
+
+        const deleteFolder = await showConfirmModal(
+            'Apagar Dados',
+            'Deseja apagar as imagens parciais que já foram baixadas desse criador/tag?',
+            'Sim, Apagar',
+            true,
+            'Não, Manter'
+        );
+
         try {
             await fetch(`/api/cancel/${currentTaskId}`, {
                 method: 'POST',
@@ -513,7 +595,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             document.querySelectorAll('.delete-folder-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
-                    if (confirm('Certeza absoluta que deseja apagar essa pasta? Todo o conteúdo será perdido.')) {
+                    const confirmed = await showConfirmModal(
+                        'Apagar Pasta',
+                        'Certeza absoluta que deseja apagar essa pasta? Todo o conteúdo será perdido.',
+                        'Apagar',
+                        true
+                    );
+                    if (confirmed) {
                         e.target.disabled = true;
                         e.target.textContent = 'Apagando...';
                         const name = e.target.getAttribute('data-name');
