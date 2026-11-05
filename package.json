@@ -20,5 +20,8 @@
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.6.0",
     "sqlite3": "^6.0.1"
+  },
+  "overrides": {
+    "minimatch": "^11.0.4"
   }
 }

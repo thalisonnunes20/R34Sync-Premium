@@ -4,6 +4,7 @@ const cors = require('cors');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { pipeline } = require('stream/promises');
 const cron = require('node-cron');
 const { ZipArchive } = require('archiver');
 const sqlite3 = require('sqlite3').verbose();
@@ -11,6 +12,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'r34sync-super-secret-key-2026';
+if (!process.env.JWT_SECRET) {
+    console.warn('[AVISO DE SEGURANÇA] JWT_SECRET não definido no .env ou variáveis de ambiente. Defina JWT_SECRET no .env para segurança em produção.');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +42,23 @@ function getBaseDownloadDir() {
     return config.downloadDir || process.env.DOWNLOAD_DIR || path.join(DATA_DIR, 'downloads');
 }
 
+// Função auxiliar para validar e resolver caminhos de pastas de forma segura
+function getSafeFolderPath(paramName) {
+    if (!paramName || typeof paramName !== 'string') return null;
+    const folderName = paramName.replace(/[^a-zA-Z0-9_-]/g, '_').trim();
+    if (!folderName) return null;
+
+    const baseDir = path.resolve(getBaseDownloadDir());
+    const targetPath = path.resolve(baseDir, folderName);
+
+    const rel = path.relative(baseDir, targetPath);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || rel.includes(path.sep)) {
+        return null;
+    }
+
+    return { folderName, folderPath: targetPath };
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -55,7 +76,12 @@ db.serialize(() => {
 // Middleware de Autenticação
 function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
+    let token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+    // Permite token por query string estritamente nas rotas de SSE (/progress/) e download direto via link (/zip/)
+    if (!token && (req.path.startsWith('/progress/') || req.path.startsWith('/zip/'))) {
+        token = req.query.token;
+    }
 
     if (!token) return res.status(401).json({ error: 'Token não fornecido' });
 
@@ -69,34 +95,54 @@ function authMiddleware(req, res, next) {
 // Rotas de Autenticação
 app.get('/api/auth/status', (req, res) => {
     db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
-        if (err) return res.status(500).json({ error: 'Erro no banco' });
+        if (err || !row) return res.status(500).json({ error: 'Erro no banco' });
         res.json({ hasUsers: row.count > 0 });
     });
 });
 
 app.post('/api/auth/setup', (req, res) => {
-    const { username, password } = req.body;
+    const { username, password } = req.body || {};
+    if (!username || typeof username !== 'string' || !username.trim()) {
+        return res.status(400).json({ error: 'Nome de usuário inválido' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+        return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+    }
+
     db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
+        if (err || !row) return res.status(500).json({ error: 'Erro no banco de dados' });
         if (row.count > 0) return res.status(403).json({ error: 'Setup já realizado' });
 
-        const hash = bcrypt.hashSync(password, 10);
-        db.run('INSERT INTO users (username, password) VALUES (?, ?)', [username, hash], function (err) {
-            if (err) return res.status(500).json({ error: 'Erro ao criar usuário' });
-            res.json({ success: true });
-        });
+        try {
+            const hash = bcrypt.hashSync(password, 10);
+            db.run('INSERT INTO users (username, password) VALUES (?, ?)', [username.trim(), hash], function (err) {
+                if (err) return res.status(500).json({ error: 'Erro ao criar usuário' });
+                res.json({ success: true });
+            });
+        } catch (e) {
+            res.status(500).json({ error: 'Erro ao processar senha' });
+        }
     });
 });
 
 app.post('/api/auth/login', (req, res) => {
-    const { username, password } = req.body;
-    db.get('SELECT * FROM users WHERE username = ?', [username], (err, row) => {
+    const { username, password } = req.body || {};
+    if (!username || typeof username !== 'string' || !password || typeof password !== 'string') {
+        return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
+    }
+
+    db.get('SELECT * FROM users WHERE username = ?', [username.trim()], (err, row) => {
         if (err || !row) return res.status(401).json({ error: 'Usuário não encontrado' });
 
-        if (bcrypt.compareSync(password, row.password)) {
-            const token = jwt.sign({ id: row.id, username: row.username }, JWT_SECRET, { expiresIn: '7d' });
-            res.json({ success: true, token });
-        } else {
-            res.status(401).json({ error: 'Senha incorreta' });
+        try {
+            if (bcrypt.compareSync(password, row.password)) {
+                const token = jwt.sign({ id: row.id, username: row.username }, JWT_SECRET, { expiresIn: '7d' });
+                res.json({ success: true, token });
+            } else {
+                res.status(401).json({ error: 'Senha incorreta' });
+            }
+        } catch (e) {
+            res.status(500).json({ error: 'Erro na autenticação' });
         }
     });
 });
@@ -165,14 +211,17 @@ app.get('/api/progress/:taskId', (req, res) => {
 
 // Inicia o processo de download
 app.post('/api/download', async (req, res) => {
-    const { tags, userId, apiKey } = req.body;
+    const { tags, userId, apiKey } = req.body || {};
 
-    if (!tags || tags.trim() === '') {
+    if (!tags || typeof tags !== 'string' || tags.trim() === '') {
         return res.status(400).json({ error: 'A tag ou nome do criador é obrigatória.' });
     }
 
     const taskId = Date.now().toString();
-    const tagSafeName = tags.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const tagSafeName = tags.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (!tagSafeName) {
+        return res.status(400).json({ error: 'A tag fornecida não possui caracteres válidos para criação de pasta.' });
+    }
     const downloadDir = path.join(getBaseDownloadDir(), tagSafeName);
 
     // Cria a pasta de download se não existir
@@ -194,13 +243,13 @@ app.post('/api/download', async (req, res) => {
     res.json({ taskId, message: 'Download iniciado' });
 
     // Inicia o processamento em background
-    processDownload(taskId, tags, downloadDir, userId, apiKey);
+    processDownload(taskId, tags.trim(), downloadDir, userId, apiKey);
 });
 
 // Cancela o download em andamento
 app.post('/api/cancel/:taskId', (req, res) => {
     const taskId = req.params.taskId;
-    const { deleteFolder } = req.body;
+    const { deleteFolder } = req.body || {};
     if (activeDownloads[taskId]) {
         activeDownloads[taskId].cancelled = true;
         activeDownloads[taskId].deleteOnCancel = deleteFolder;
@@ -215,31 +264,51 @@ app.get('/api/folders', (req, res) => {
     const baseDir = getBaseDownloadDir();
     if (!fs.existsSync(baseDir)) return res.json([]);
 
-    const folders = fs.readdirSync(baseDir).filter(f => fs.statSync(path.join(baseDir, f)).isDirectory());
-
-    const result = folders.map(folder => {
-        const folderPath = path.join(baseDir, folder);
-        const files = fs.readdirSync(folderPath);
-        let totalSize = 0;
-        files.forEach(file => {
-            totalSize += fs.statSync(path.join(folderPath, file)).size;
+    try {
+        const folders = fs.readdirSync(baseDir).filter(f => {
+            try {
+                return fs.statSync(path.join(baseDir, f)).isDirectory();
+            } catch (e) {
+                return false;
+            }
         });
 
-        return {
-            name: folder,
-            fileCount: files.length,
-            sizeMb: (totalSize / (1024 * 1024)).toFixed(2)
-        };
-    });
+        const result = folders.map(folder => {
+            const folderPath = path.join(baseDir, folder);
+            let files = [];
+            try {
+                files = fs.readdirSync(folderPath);
+            } catch (e) {
+                files = [];
+            }
+            let totalSize = 0;
+            files.forEach(file => {
+                try {
+                    totalSize += fs.statSync(path.join(folderPath, file)).size;
+                } catch (e) { }
+            });
 
-    res.json(result);
+            return {
+                name: folder,
+                fileCount: files.length,
+                sizeMb: (totalSize / (1024 * 1024)).toFixed(2)
+            };
+        });
+
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: 'Erro ao listar pastas' });
+    }
 });
 
 // Gerenciamento de Pastas (Deletar)
 app.delete('/api/folders/:name', (req, res) => {
-    const folderName = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const folderPath = path.join(getBaseDownloadDir(), folderName);
-    if (fs.existsSync(folderPath)) {
+    const folderInfo = getSafeFolderPath(req.params.name);
+    if (!folderInfo) {
+        return res.status(400).json({ error: 'Nome de pasta inválido' });
+    }
+    const { folderPath } = folderInfo;
+    if (fs.existsSync(folderPath) && fs.statSync(folderPath).isDirectory()) {
         fs.rmSync(folderPath, { recursive: true, force: true });
         res.json({ success: true });
     } else {
@@ -249,10 +318,13 @@ app.delete('/api/folders/:name', (req, res) => {
 
 // Gerenciamento de Pastas (Download ZIP)
 app.get('/api/zip/:name', (req, res) => {
-    const folderName = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const folderPath = path.join(getBaseDownloadDir(), folderName);
+    const folderInfo = getSafeFolderPath(req.params.name);
+    if (!folderInfo) {
+        return res.status(400).json({ error: 'Nome de pasta inválido' });
+    }
+    const { folderName, folderPath } = folderInfo;
 
-    if (!fs.existsSync(folderPath)) {
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
         return res.status(404).json({ error: 'Pasta não encontrada' });
     }
 
@@ -260,7 +332,9 @@ app.get('/api/zip/:name', (req, res) => {
     const archive = new ZipArchive({ zlib: { level: 5 } });
 
     archive.on('error', (err) => {
-        res.status(500).send({ error: err.message });
+        if (!res.headersSent) {
+            res.status(500).send({ error: err.message });
+        }
     });
 
     archive.pipe(res);
@@ -279,12 +353,18 @@ app.get('/api/config', (req, res) => {
 app.post('/api/config', (req, res) => {
     const config = getAppConfig();
     let cronUpdated = false;
-    if (req.body.downloadDir !== undefined) {
-        config.downloadDir = req.body.downloadDir;
+    if (typeof req.body.downloadDir === 'string') {
+        const trimmed = req.body.downloadDir.trim();
+        config.downloadDir = trimmed ? path.resolve(trimmed) : '';
     }
-    if (req.body.cronTime !== undefined) {
-        config.cronTime = req.body.cronTime;
-        cronUpdated = true;
+    if (typeof req.body.cronTime === 'string') {
+        const trimmedCron = req.body.cronTime.trim();
+        if (/^([01]\d|2[0-3]):([0-5]\d)$/.test(trimmedCron)) {
+            config.cronTime = trimmedCron;
+            cronUpdated = true;
+        } else {
+            return res.status(400).json({ error: 'Formato de horário inválido. Utilize HH:MM (ex: 03:00).' });
+        }
     }
     saveAppConfig(config);
     if (cronUpdated && typeof startCronTask === 'function') {
@@ -299,8 +379,8 @@ app.get('/api/tracked', (req, res) => {
 });
 
 app.post('/api/tracked', (req, res) => {
-    const { tags, searchType } = req.body;
-    if (!tags) return res.status(400).json({ error: 'Tags obrigatórias' });
+    const { tags, searchType } = req.body || {};
+    if (!tags || typeof tags !== 'string' || !tags.trim()) return res.status(400).json({ error: 'Tags obrigatórias' });
 
     let finalTags = tags.trim();
     if (searchType === 'user' && !finalTags.startsWith('user:')) {
@@ -365,9 +445,10 @@ async function processDownload(taskId, tags, downloadDir, userId, apiKey) {
 
             let data = response.data;
 
-            // --- DEBUG LOGS ---
+            // --- DEBUG LOGS (com credenciais mascaradas para segurança) ---
+            const safeLogUrl = url.replace(/api_key=[^&]+/g, 'api_key=REDACTED');
             console.log('================= DEBUG API =================');
-            console.log('URL Chamada:', url);
+            console.log('URL Chamada:', safeLogUrl);
             console.log('Tipo do Retorno:', typeof data);
             if (typeof data === 'string') {
                 console.log('Conteúdo RAW (início):', data.substring(0, 500));
@@ -452,12 +533,7 @@ async function processDownload(taskId, tags, downloadDir, userId, apiKey) {
                 });
 
                 const writer = fs.createWriteStream(filePath);
-                fileResponse.data.pipe(writer);
-
-                await new Promise((resolve, reject) => {
-                    writer.on('finish', resolve);
-                    writer.on('error', reject);
-                });
+                await pipeline(fileResponse.data, writer);
 
                 downloadedCount++;
                 updateStatus({ downloadedFiles: downloadedCount, message: `Baixado: ${fileName}` });
@@ -494,8 +570,13 @@ function startCronTask() {
     }
     const config = getAppConfig();
     const cronTime = config.cronTime || process.env.CRON_TIME || '03:00';
-    const [cronHour, cronMinute] = cronTime.split(':');
-    const cronSchedule = `${cronMinute || '0'} ${cronHour || '3'} * * *`;
+    let cronHour = '03';
+    let cronMinute = '00';
+
+    if (typeof cronTime === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(cronTime.trim())) {
+        [cronHour, cronMinute] = cronTime.trim().split(':');
+    }
+    const cronSchedule = `${parseInt(cronMinute, 10)} ${parseInt(cronHour, 10)} * * *`;
 
     activeCronTask = cron.schedule(cronSchedule, async () => {
         console.log('=============================================');
@@ -524,7 +605,7 @@ function startCronTask() {
         console.log('=============================================');
     });
 
-    console.log(`[Cron] Tarefa agendada para rodar diariamente às ${cronHour || '03'}:${cronMinute || '00'}`);
+    console.log(`[Cron] Tarefa agendada para rodar diariamente às ${cronHour}:${cronMinute}`);
 }
 
 startCronTask();

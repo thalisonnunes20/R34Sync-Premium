@@ -9,6 +9,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let token = localStorage.getItem('r34sync_token') || '';
 
+    // Função utilitária para prevenir injeção HTML (Stored DOM-XSS)
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     // ==========================================
     // MODAL CUSTOMIZADO (POP-UP)
     // ==========================================
@@ -507,8 +518,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 el.style.border = '1px solid rgba(255,255,255,0.05)';
                 
                 el.innerHTML = `
-                    <span style="font-weight: 600; color: var(--accent);">${item.tags}</span>
-                    <button class="delete-btn" data-id="${item.id}" style="width: auto; padding: 0.3rem 0.8rem; background: var(--error); color: white; font-size: 0.75rem; border: none; border-radius: 4px; cursor: pointer;">Remover</button>
+                    <span style="font-weight: 600; color: var(--accent);">${escapeHtml(item.tags)}</span>
+                    <button class="delete-btn" data-id="${escapeHtml(item.id)}" style="width: auto; padding: 0.3rem 0.8rem; background: var(--error); color: white; font-size: 0.75rem; border: none; border-radius: 4px; cursor: pointer;">Remover</button>
                 `;
                 
                 trackedList.appendChild(el);
@@ -517,7 +528,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.querySelectorAll('.delete-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const id = e.target.getAttribute('data-id');
-                    await fetch('/api/tracked/' + id, { method: 'DELETE' });
+                    await fetch('/api/tracked/' + encodeURIComponent(id), { method: 'DELETE' });
                     loadTracked();
                 });
             });
@@ -580,14 +591,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 el.style.background = 'rgba(15, 23, 42, 0.5)';
                 el.style.borderRadius = '8px';
                 el.style.border = '1px solid rgba(255,255,255,0.05)';
+                const encodedName = encodeURIComponent(folder.name);
                 el.innerHTML = `
                     <div>
-                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.2rem;">${folder.name}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary);">${folder.fileCount} arquivos (${folder.sizeMb} MB)</div>
+                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.2rem;">${escapeHtml(folder.name)}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHtml(folder.fileCount)} arquivos (${escapeHtml(folder.sizeMb)} MB)</div>
                     </div>
                     <div style="display: flex; gap: 5px;">
-                        <a href="/api/zip/${folder.name}?token=${token}" target="_blank" onclick="this.textContent = 'Gerando...'; setTimeout(() => this.textContent = 'Baixar ZIP', 3000);" style="text-decoration: none; padding: 0.5rem 0.8rem; background: var(--success); color: white; font-size: 0.75rem; border-radius: 4px; font-weight: bold;">Baixar ZIP</a>
-                        <button class="delete-folder-btn" data-name="${folder.name}" style="padding: 0.5rem 0.8rem; background: var(--error); color: white; font-size: 0.75rem; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Apagar</button>
+                        <a href="/api/zip/${encodedName}?token=${encodeURIComponent(token)}" target="_blank" onclick="this.textContent = 'Gerando...'; setTimeout(() => this.textContent = 'Baixar ZIP', 3000);" style="text-decoration: none; padding: 0.5rem 0.8rem; background: var(--success); color: white; font-size: 0.75rem; border-radius: 4px; font-weight: bold;">Baixar ZIP</a>
+                        <button class="delete-folder-btn" data-name="${escapeHtml(folder.name)}" style="padding: 0.5rem 0.8rem; background: var(--error); color: white; font-size: 0.75rem; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Apagar</button>
                     </div>
                 `;
                 foldersList.appendChild(el);
@@ -605,7 +617,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         e.target.disabled = true;
                         e.target.textContent = 'Apagando...';
                         const name = e.target.getAttribute('data-name');
-                        await fetch('/api/folders/' + name, { method: 'DELETE' });
+                        await fetch('/api/folders/' + encodeURIComponent(name), { method: 'DELETE' });
                         loadFolders();
                     }
                 });
